@@ -23,6 +23,8 @@ import android.widget.TextView;
 import android.graphics.Path;
 import android.graphics.PathMeasure;
 import android.graphics.PointF;
+import android.graphics.Rect;
+import android.graphics.Region;
 
 public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 {
@@ -111,7 +113,6 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             }
             msg.setData(b);
             mHandler.sendMessage(msg);
-            Log.d(TAG, "setState finished");
         }
 
         /**
@@ -134,6 +135,13 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             setState(STATE_RUNNING);
         }
 
+        public void togglePause() {
+            if ( mMode == STATE_RUNNING )
+                pause();
+            else
+                unpause();
+        }
+
         private void updatePhysics() {
             long now = System.currentTimeMillis();
 
@@ -152,13 +160,13 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
         public void doStart() {
             synchronized (mSurfaceHolder) {
                 mLastTime = System.currentTimeMillis() + 100;
-                setState(STATE_RUNNING);
+                setState(STATE_PAUSE); // start in pause
             }
         }
 
         public void setSurfaceSize(int w, int h) {
             synchronized (mSurfaceHolder) {
-                RectF boundary = new RectF(0, 0, w, h);
+                Rect boundary = new Rect(0, 0, w, h);
                 //boundary.inset(30, 30);
                 snake.setBoundary(boundary);
                 snake.setPosition(w/2f, 5*h/8f);
@@ -166,20 +174,20 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
         }
 
 	public boolean doDown(MotionEvent e) {
-            snake.setGoal(e.getX(), e.getY());
-            //ball.setConstants(800, 50); // nice fast effect
-            //ball.setConstants(200, 50);
+            if (mMode == STATE_RUNNING) {
+                snake.setGoal(e.getX(), e.getY());
+            }
             return true;
 	}
 
 	public boolean doScroll(MotionEvent e1, MotionEvent e2,
 				float dX, float dY) {
-            snake.setGoal(e2.getX(), e2.getY());
-            //float d = ball.differenceToGoal();
-            //float m = (float)Math.exp(-d/50);
-            //Log.d(TAG, "Multiplier is " + m);
-            //ball.setConstants(10000*m, 50);
-	    return true;
+            if (mMode == STATE_RUNNING) {
+                snake.setGoal(e2.getX(), e2.getY());
+                return true;
+            }
+            else
+                return false;
 	}
 
 	public boolean doFling (MotionEvent e1, MotionEvent e2,
@@ -189,8 +197,14 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             /*ball.setMode(Ball.MODE_FREE);
             ball.state.x = e2.getX();
             ball.state.y = e2.getY();*/
-	    return true;
+	    return false;
 	}
+
+	public boolean doDoubleTap(MotionEvent e) {
+            togglePause();
+            return true;
+        }
+
 
         public Bundle saveState(Bundle map) {
             synchronized (mSurfaceHolder) {
@@ -326,29 +340,10 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             public State acc;
         }
 
-        // protected class Contact {
-        //     public float nx, ny, depth;
-        //     public State difference;
-
-        //     public Contact scale(float a) {
-        //         Contact result = new Contact();
-        //         result.nx = a*nx;
-        //         result.ny = a*ny;
-        //         result.depth = depth;
-        //         result.difference = difference.scale(a);
-        //         return result;
-        //     }
-
-        //     public String toString() {
-        //         return "n=(" + nx + "," + ny + "); depth=" + depth +
-        //             "; difference=" + difference.toString();
-        //     }
-        // }
-
 	private int color;
 	protected float width;
 
-	protected RectF boundary;
+	protected Rect boundary;
 	//protected RectF inset;
 
         protected final State pos;
@@ -357,15 +352,18 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
         protected final Path path;
         protected final PathMeasure pathMeasure;
 
+        private Region region = new Region();
+
         protected float maxLength;
         protected float speed;
 
         protected final State goal;
-        protected State dir;
+        protected float goal_dist = 50f;
+        protected float max_goal_dist = 50f;
 
         public static final int MODE_FREE = 1;
         public static final int MODE_FORCED = 2;
-        public static final int MODE_COLLISION = 3;
+        public static final int MODE_CRASH = 3;
         protected int mode;
 
         /** Spring tightness */
@@ -393,11 +391,10 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             pathMeasure = new PathMeasure();
 
             goal = new State(0,0);
-            dir = new State(0,0);
 
             mode = MODE_FREE;
 
-            setConstants(800f, 50f);
+            setConstants(80f, 50f);
 	}
 
 	public void setPosition(float x, float y) {
@@ -410,18 +407,17 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             path.setLastPoint(x, y);
 	}
 
+        public void setGoal(PointF g) {
+            setGoal(g.x, g.y);
+        }
+
 	public void setGoal(float x, float y) {
-            // if (!inset.contains(x,y)) {
-            //     x = Math.max(x, inset.left+2);
-            //     x = Math.min(x, inset.right-2);
-            //     y = Math.max(y, inset.top+2);
-            //     y = Math.min(y, inset.bottom-2);
-            // }
-            //Log.d(TAG, "Snake: setGoal=" + x + ", " + y);
             goal.x = x;
             goal.y = y;
-            dir.set(pos.subtract(goal).normed());
-            setMode(MODE_FORCED);
+
+            State dir = goal.subtract(pos);
+            dir = dir.normed().scale(goal_dist);
+            goal.set(pos.add(dir));
 	}
 
         public void setMode(int m) {
@@ -436,7 +432,7 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             this.b = b;
         }
 
-        public void setBoundary(RectF b) {
+        public void setBoundary(Rect b) {
             boundary = b;
             //inset = new RectF(b);
             //inset.inset(radius, radius);
@@ -452,9 +448,30 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             paint.setStrokeWidth(width);
             canvas.drawPath(path, paint);
 
+            // DEBUG: draw circle around goal
+            paint.setColor(0xffaabbdd);
+            paint.setStrokeWidth(2);
+            canvas.drawCircle(goal.x, goal.y, max_goal_dist, paint);
+
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.YELLOW);
-            canvas.drawCircle(pos.x, pos.y, 1.2f*width, paint);
+            canvas.drawCircle(pos.x, pos.y, width, paint);
+
+            if ( true )
+                return;
+
+            // DEBUG: draw head rect
+            paint.setColor(Color.BLUE);
+            canvas.drawRect(headRect(), paint);
+
+            // DEBUG: draw tail path with collision indication
+            Path tail = tailPath();
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setColor(Color.GREEN);
+            if ( mode == MODE_CRASH )
+                paint.setColor(Color.BLUE);
+            paint.setStrokeWidth(width);
+            canvas.drawPath(tail, paint);
 	}
 
         protected Derivative evaluate(float t, float dt, Derivative D) {
@@ -465,7 +482,7 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 
             result.vel = newVel;
 
-            dir.set(newPos.subtract(goal));
+            State dir = newPos.subtract(goal);
             result.acc = dir.scale(-k).subtract(newVel.scale(b));
 
             return result;
@@ -493,12 +510,54 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 
             pathMeasure.setPath(path, false);
             float length = pathMeasure.getLength();
+            Path dst = new Path();
+
             if ( length > maxLength ) {
-                Path dst = new Path();
                 pathMeasure.getSegment(length - maxLength, length,
                                        dst, true);
                 path.set(dst);
             }
+
+            /* Check self-intersection via android.graphics.Region.
+               See http://stackoverflow.com/questions/2597590/
+             */
+            Path tail = tailPath();
+            region = new Region();
+            if ( region.setPath(tail, new Region(headRect())) ) {
+                if (mode != MODE_CRASH)
+                    Log.d(TAG, "Collision!");
+                if ( region.contains((int)pos.x, (int)pos.y) )
+                    Log.d(TAG, "Deep collision!");
+                setMode(MODE_CRASH);
+            }
+            else {
+                if (mode == MODE_CRASH)
+                    Log.d(TAG, "Uncrash");
+
+                setMode(MODE_FORCED);
+            }
+            // region.setPath(dst, new Region(boundary));
+            // if ( !region.quickReject(headRect()) ) {
+            //     Log.d(TAG, "Collision!");
+            //     setMode(MODE_CRASH);
+            // }
+
+            setGoal(goal.add(vel.normed().scale(10)));
+        }
+
+        private Path tailPath() {
+            Path result = new Path();
+            pathMeasure.setPath(path, false);
+            pathMeasure.getSegment(0, 0.9f*pathMeasure.getLength(),
+                                   result, true);
+            return result;
+        }
+
+        public Rect headRect() {
+            Rect result = new Rect((int)pos.x, (int)pos.y,
+                                   (int)pos.x, (int)pos.y);
+            result.inset(-(int)width, -(int)width);
+            return result;
         }
 
         public void vibrate() {
@@ -529,9 +588,6 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 
 	@Override
 	public boolean onDown(MotionEvent e) {
-	    /* We should not always return true here. */
-	    //player.moveTo(e.getX(), e.getY());
-            //Log.d(TAG, "onDown: " + e.toString());
             return thread.doDown(e);
 	}
 
@@ -552,8 +608,8 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 
 	@Override
 	public boolean onDoubleTap(MotionEvent e) {
-            Log.d(TAG, "onDoubleTap: " + e.toString());
-	    return true;
+            //Log.d(TAG, "onDoubleTap" + e.toString());
+            return thread.doDoubleTap(e);
 	}
 
 	@Override
