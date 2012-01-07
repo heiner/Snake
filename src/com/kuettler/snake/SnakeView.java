@@ -397,9 +397,7 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 
             mode = MODE_FREE;
 
-            setConstants(80f, 0f);
-            // k = 800;
-            // b = 50;
+            setConstants(800f, 50f);
 	}
 
 	public void setPosition(float x, float y) {
@@ -446,23 +444,30 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 
 	public void draw(Canvas canvas) {
 	    Paint paint = new Paint();
-	    paint.setColor(color);
 	    paint.setAntiAlias(true);
-	    //canvas.drawCircle(pos.x, pos.y, width, p);
 
+            paint.setColor(color);
             paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(width);
             canvas.drawPath(path, paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.YELLOW);
+            canvas.drawCircle(pos.x, pos.y, 1.2f*width, paint);
 	}
 
         protected Derivative evaluate(float t, float dt, Derivative D) {
             Derivative result = new Derivative();
 
-            State state = pos.add(D.vel.scale(dt));  // pos + D.vel*dt
-            result.vel  = vel.add(D.acc.scale(dt));   // vel + D.acc*dt
+            State newPos = pos.add(D.vel.scale(dt));
+            State newVel = vel.add(D.acc.scale(dt));
 
-            result.acc = dir.scale(-k).add(result.vel.scale(b)).normed();
-            result.acc = result.acc.scale(100);
+            result.vel = newVel;
+
+            dir.set(newPos.subtract(goal));
+            result.acc = dir.scale(-k).subtract(newVel.scale(b));
+
             return result;
         }
 
@@ -493,15 +498,6 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
                 pathMeasure.getSegment(length - maxLength, length,
                                        dst, true);
                 path.set(dst);
-            }
-
-            State distance = pos.subtract(goal);
-            if ( distance.length() > 10 ) {
-                dir.set(distance.normed());
-                setMode(MODE_FORCED);
-            }
-            else {
-                setMode(MODE_FREE);
             }
         }
 
