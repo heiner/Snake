@@ -5,7 +5,8 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.RectF;
+import android.graphics.PointF;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -22,8 +23,6 @@ import android.widget.TextView;
 
 import android.graphics.Path;
 import android.graphics.PathMeasure;
-import android.graphics.PointF;
-import android.graphics.Rect;
 import android.graphics.Region;
 
 public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
@@ -448,21 +447,21 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             paint.setStrokeWidth(width);
             canvas.drawPath(path, paint);
 
-            // DEBUG: draw circle around goal
-            paint.setColor(0xffaabbdd);
-            paint.setStrokeWidth(2);
-            canvas.drawCircle(goal.x, goal.y, max_goal_dist, paint);
+            // // DEBUG: draw circle around goal
+            // paint.setColor(0xffaabbdd);
+            // paint.setStrokeWidth(2);
+            // canvas.drawCircle(goal.x, goal.y, max_goal_dist, paint);
 
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.YELLOW);
             canvas.drawCircle(pos.x, pos.y, width, paint);
 
-            if ( true )
-                return;
+            //if ( true )
+            //    return;
 
-            // DEBUG: draw head rect
-            paint.setColor(Color.BLUE);
-            canvas.drawRect(headRect(), paint);
+            // // DEBUG: draw head rect
+            // paint.setColor(Color.BLUE);
+            // canvas.drawRect(headRect(), paint);
 
             // DEBUG: draw tail path with collision indication
             Path tail = tailPath();
@@ -526,8 +525,6 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             if ( region.setPath(tail, new Region(headRect())) ) {
                 if (mode != MODE_CRASH)
                     Log.d(TAG, "Collision!");
-                if ( region.contains((int)pos.x, (int)pos.y) )
-                    Log.d(TAG, "Deep collision!");
                 setMode(MODE_CRASH);
             }
             else {
@@ -550,6 +547,27 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             pathMeasure.setPath(path, false);
             pathMeasure.getSegment(0, 0.9f*pathMeasure.getLength(),
                                    result, true);
+
+            // DEBUG try (1)
+            // result.close();
+
+            // DEBUG try (2)
+            // float[] start = new float[2];
+            // float[] tangent = new float[2];
+            // pathMeasure.getPosTan(0f, start, tangent);
+
+            // State s = new State();
+            // s.x = start[0]; s.y = start[1];
+            // State a = s.add(s.subtract(pos).scale(100));
+
+            // result.cubicTo(a.x, a.y,
+            //                a.x, a.y,
+            //                start[0], start[1]);
+
+            // DEBUG try (3)
+            // result.setFillType(Path.FillType.EVEN_ODD);
+            // result.addPath(result, 1f, 1f);
+
             return result;
         }
 
