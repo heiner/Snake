@@ -23,7 +23,7 @@ import android.widget.TextView;
 
 import android.graphics.Path;
 import android.graphics.PathMeasure;
-import android.graphics.Region;
+import android.graphics.Bitmap;
 
 public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 {
@@ -351,9 +351,10 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
         protected final Path path;
         protected final PathMeasure pathMeasure;
 
-        private Region region = new Region();
+        private Bitmap bitmap;
 
         protected float maxLength;
+        protected float startLength;
         protected float speed;
 
         protected final State goal;
@@ -381,6 +382,7 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             this.color = color;
             width = 10f;
             maxLength = 500f;
+            startLength = 50f;
             speed = 100f;
 
             pos = new State(0,0);
@@ -402,8 +404,9 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             pos.y = goal.y = y;
             vel.x = vel.y = 0;
 
-            path.rewind();
-            path.setLastPoint(x, y);
+            path.reset();
+            path.setLastPoint(x, y + startLength);
+            path.lineTo(x, y);
 	}
 
         public void setGoal(PointF g) {
@@ -433,6 +436,9 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
 
         public void setBoundary(Rect b) {
             boundary = b;
+            // the lookup bitmap. ALPHA_8 does not seem to work.
+            bitmap = Bitmap.createBitmap(b.width(), b.height(),
+                                         Bitmap.Config.RGB_565);
             //inset = new RectF(b);
             //inset.inset(radius, radius);
         }
@@ -445,6 +451,7 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(width);
+
             canvas.drawPath(path, paint);
 
             // // DEBUG: draw circle around goal
@@ -459,17 +466,12 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
             //if ( true )
             //    return;
 
-            // // DEBUG: draw head rect
-            // paint.setColor(Color.BLUE);
-            // canvas.drawRect(headRect(), paint);
-
             // DEBUG: draw tail path with collision indication
             Path tail = tailPath();
             paint.setStyle(Paint.Style.STROKE);
             paint.setColor(Color.GREEN);
             if ( mode == MODE_CRASH )
-                paint.setColor(Color.BLUE);
-            paint.setStrokeWidth(width);
+                paint.setColor(Color.WHITE);
             canvas.drawPath(tail, paint);
 	}
 
@@ -517,27 +519,28 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
                 path.set(dst);
             }
 
-            /* Check self-intersection via android.graphics.Region.
-               See http://stackoverflow.com/questions/2597590/
-             */
             Path tail = tailPath();
-            region = new Region();
-            if ( region.setPath(tail, new Region(headRect())) ) {
+            bitmap.eraseColor(Color.BLACK);
+            Canvas canvas = new Canvas(bitmap);
+
+	    Paint paint = new Paint();
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeWidth(width);
+            paint.setColor(Color.WHITE);
+
+            canvas.drawPath(tail, paint);
+
+            if ( bitmap.getPixel((int)pos.x, (int)pos.y) == Color.WHITE ) {
                 if (mode != MODE_CRASH)
                     Log.d(TAG, "Collision!");
                 setMode(MODE_CRASH);
-            }
-            else {
-                if (mode == MODE_CRASH)
-                    Log.d(TAG, "Uncrash");
-
-                setMode(MODE_FORCED);
-            }
-            // region.setPath(dst, new Region(boundary));
-            // if ( !region.quickReject(headRect()) ) {
-            //     Log.d(TAG, "Collision!");
-            //     setMode(MODE_CRASH);
-            // }
+             }
+             else {
+                 if (mode == MODE_CRASH)
+                     Log.d(TAG, "Uncrash");
+                 setMode(MODE_FORCED);
+             }
 
             setGoal(goal.add(vel.normed().scale(10)));
         }
@@ -545,38 +548,17 @@ public class SnakeView extends SurfaceView implements SurfaceHolder.Callback
         private Path tailPath() {
             Path result = new Path();
             pathMeasure.setPath(path, false);
-            pathMeasure.getSegment(0, 0.9f*pathMeasure.getLength(),
+            pathMeasure.getSegment(0, 0.95f*pathMeasure.getLength(),
                                    result, true);
-
-            // DEBUG try (1)
-            // result.close();
-
-            // DEBUG try (2)
-            // float[] start = new float[2];
-            // float[] tangent = new float[2];
-            // pathMeasure.getPosTan(0f, start, tangent);
-
-            // State s = new State();
-            // s.x = start[0]; s.y = start[1];
-            // State a = s.add(s.subtract(pos).scale(100));
-
-            // result.cubicTo(a.x, a.y,
-            //                a.x, a.y,
-            //                start[0], start[1]);
-
-            // DEBUG try (3)
-            // result.setFillType(Path.FillType.EVEN_ODD);
-            // result.addPath(result, 1f, 1f);
-
             return result;
         }
 
-        public Rect headRect() {
-            Rect result = new Rect((int)pos.x, (int)pos.y,
-                                   (int)pos.x, (int)pos.y);
-            result.inset(-(int)width, -(int)width);
-            return result;
-        }
+        // public Rect headRect() {
+        //     Rect result = new Rect((int)pos.x, (int)pos.y,
+        //                            (int)pos.x, (int)pos.y);
+        //     result.inset(-(int)width, -(int)width);
+        //     return result;
+        // }
 
         public void vibrate() {
             long now = System.currentTimeMillis();
